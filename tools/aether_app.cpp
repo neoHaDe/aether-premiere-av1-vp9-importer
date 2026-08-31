@@ -59,6 +59,7 @@ enum {
     ID_PREVIEW_CACHE,
     ID_PREVIEW_LIMIT,
     ID_CLEAR_PREVIEW,
+    ID_LANGUAGE,
 
     ID_CLOSE = 400,
 };
@@ -123,6 +124,7 @@ const Palette kDark = {
 };
 
 enum class Page { Settings, Cache, Diagnose };
+enum class UiLanguage { English, Russian };
 
 struct App {
     HWND  wnd = nullptr;
@@ -139,6 +141,7 @@ struct App {
     HWND navDiagnose = nullptr;
     HWND brand       = nullptr;
     HWND version     = nullptr;
+    HWND languageCombo = nullptr;
 
     // Страница настроек
     HWND setHead = nullptr;
@@ -180,6 +183,7 @@ struct App {
     int      choice = 0;          // 0 авто, 1 процессор, 2 видеокарта
     bool     enabledChoice = true;
     bool     previewChoice = false;
+    UiLanguage language = UiLanguage::English;
 
     bool     dark = false;
     Palette  pal  = kLight;
@@ -194,6 +198,58 @@ struct App {
 };
 
 App g;
+
+const wchar_t* Text(const wchar_t* english, const wchar_t* russian)
+{
+    return g.language == UiLanguage::Russian ? russian : english;
+}
+
+UiLanguage SystemLanguage()
+{
+    wchar_t locale[LOCALE_NAME_MAX_LENGTH] = {};
+    if (GetUserDefaultLocaleName(locale, LOCALE_NAME_MAX_LENGTH) > 0 &&
+        _wcsnicmp(locale, L"ru", 2) == 0) {
+        return UiLanguage::Russian;
+    }
+    return UiLanguage::English;
+}
+
+UiLanguage LoadLanguage()
+{
+    HKEY key = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Aether", 0, KEY_READ, &key) !=
+        ERROR_SUCCESS) {
+        return SystemLanguage();
+    }
+
+    wchar_t value[8] = {};
+    DWORD type = 0, size = sizeof(value);
+    const LSTATUS status = RegQueryValueExW(key, L"UiLanguage", nullptr, &type,
+                                             reinterpret_cast<BYTE*>(value), &size);
+    RegCloseKey(key);
+    if (status == ERROR_SUCCESS && type == REG_SZ && _wcsicmp(value, L"ru") == 0) {
+        return UiLanguage::Russian;
+    }
+    if (status == ERROR_SUCCESS && type == REG_SZ && _wcsicmp(value, L"en") == 0) {
+        return UiLanguage::English;
+    }
+    return SystemLanguage();
+}
+
+void SaveLanguage(UiLanguage language)
+{
+    HKEY key = nullptr;
+    DWORD disposition = 0;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Aether", 0, nullptr, 0,
+                        KEY_SET_VALUE, nullptr, &key, &disposition) != ERROR_SUCCESS) {
+        return;
+    }
+    const wchar_t* value = language == UiLanguage::Russian ? L"ru" : L"en";
+    RegSetValueExW(key, L"UiLanguage", 0, REG_SZ,
+                   reinterpret_cast<const BYTE*>(value),
+                   static_cast<DWORD>((wcslen(value) + 1) * sizeof(*value)));
+    RegCloseKey(key);
+}
 
 int Dp(int v) { return MulDiv(v, g.dpi, 96); }
 
@@ -336,6 +392,7 @@ void ApplyFonts()
     const Pair pairs[] = {
         { g.brand, g.head }, { g.version, g.body },
         { g.navSettings, g.nav }, { g.navCache, g.nav }, { g.navDiagnose, g.nav },
+        { g.languageCombo, g.body },
         { g.setHead, g.head }, { g.cacheHead, g.head }, { g.diagHead, g.head },
         { g.enabled, g.body }, { g.enabledNote, g.body },
         { g.radio[0], g.body }, { g.radio[1], g.body }, { g.radio[2], g.body },
@@ -351,6 +408,94 @@ void ApplyFonts()
     };
     for (const Pair& p : pairs) {
         if (p.h) SendMessageW(p.h, WM_SETFONT, (WPARAM)p.f, TRUE);
+    }
+}
+
+void SetComboText(HWND combo, int index, const wchar_t* text, uint32_t data)
+{
+    if (!combo) return;
+    if (SendMessageW(combo, CB_GETCOUNT, 0, 0) <= index) return;
+    const LRESULT selected = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+    SendMessageW(combo, CB_DELETESTRING, index, 0);
+    const LRESULT inserted = SendMessageW(combo, CB_INSERTSTRING, index, (LPARAM)text);
+    if (inserted != CB_ERR) SendMessageW(combo, CB_SETITEMDATA, inserted, data);
+    if (selected == index) SendMessageW(combo, CB_SETCURSEL, index, 0);
+}
+
+void UpdateUiText()
+{
+    SetWindowTextW(g.version, (std::wstring(Text(L"version ", L"версия ")) +
+                               AETHER_VERSION_WSTR).c_str());
+    SetWindowTextW(g.navSettings, Text(L"Settings", L"Настройки"));
+    SetWindowTextW(g.navCache, Text(L"Cache", L"Кэш"));
+    SetWindowTextW(g.navDiagnose, Text(L"Diagnostics", L"Диагностика"));
+
+    SetWindowTextW(g.setHead, Text(L"How to decode AV1 and VP9 video",
+                                   L"Как распаковывать видео AV1 и VP9"));
+    SetWindowTextW(g.enabled, Text(L"Aether enabled", L"Aether включён"));
+    SetWindowTextW(g.enabledNote,
+                   Text(L"When disabled, Adobe passes files to other importers after restart,\n"
+                        L"and Aether does not load FFmpeg.",
+                        L"Если выключить, после перезапуска Adobe файлы будут переданы\n"
+                        L"другим импортёрам, а FFmpeg не загрузится."));
+    SetWindowTextW(g.radio[0], Text(L"Automatic (recommended)",
+                                    L"Автоматически (рекомендуется)"));
+    SetWindowTextW(g.note[0], Text(L"Use the CPU with 8 or more threads; otherwise use the GPU.",
+                                   L"Процессором на машинах от 8 потоков, иначе видеокартой."));
+    SetWindowTextW(g.radio[1], Text(L"CPU (dav1d)", L"Процессором (dav1d)"));
+    SetWindowTextW(g.note[1],
+                   Text(L"Decodes directly into system memory.",
+                        L"Декодирует сразу в обычную память."));
+    SetWindowTextW(g.radio[2], Text(L"GPU (NVIDIA / Intel / AMD)",
+                                    L"Видеокартой (NVIDIA / Intel / AMD)"));
+    SetWindowTextW(g.note[2],
+                   Text(L"Usually slower: each frame must be copied back into system memory.\n"
+                        L"It frees the CPU when the CPU is slow or busy.",
+                        L"Обычно медленнее: каждый кадр нужно скопировать в обычную память.\n"
+                        L"Разгружает процессор, если он слабый или занят другим."));
+    SetWindowTextW(g.setHint,
+                   Text(L"Changes take effect after restarting Premiere Pro.",
+                        L"Изменения вступят в силу после перезапуска Premiere Pro."));
+    SetWindowTextW(g.save, Text(L"Save", L"Сохранить"));
+
+    SetWindowTextW(g.cacheHead, Text(L"Aether cache", L"Кэш Aether"));
+    SetWindowTextW(g.memoryLabel, Text(L"Memory frame cache", L"Кэш кадров в памяти"));
+    SetWindowTextW(g.memoryNote,
+                   Text(L"This limit applies only to frames cached by Aether.\n"
+                        L"Premiere's total memory use can be higher.",
+                        L"Лимит относится только к кадрам, которые кэширует Aether.\n"
+                        L"Общая память Premiere может быть выше."));
+    SetWindowTextW(g.previewToggle,
+                   Text(L"Store reduced previews on disk", L"Хранить уменьшенные превью на диске"));
+    SetWindowTextW(g.previewNote,
+                   Text(L"Only BGRA8 Draft/Low previews up to 2 MiB. Full-size\n"
+                        L"playback and export never use this cache.",
+                        L"Только BGRA8 Draft/Low до 2 MiB. Полноразмерное\n"
+                        L"воспроизведение и экспорт этот кэш не используют."));
+    SetWindowTextW(g.previewLimitLabel, Text(L"Disk cache limit", L"Лимит дискового кэша"));
+    SetWindowTextW(g.clearPreview, Text(L"Clear preview cache", L"Очистить кэш превью"));
+
+    SetWindowTextW(g.diagHead, Text(L"Diagnostics", L"Диагностика"));
+    SetWindowTextW(g.diagNote,
+                   Text(L"Checks your system, Adobe applications, and video decoding. If a file\n"
+                        L"does not open, select it and Aether will check it separately.",
+                        L"Проверяет систему, приложения Adobe и распаковку видео. Если какой-то\n"
+                        L"файл не открывается — укажите его, и он будет проверен отдельно."));
+    SetWindowTextW(g.pick, Text(L"Choose file...", L"Выбрать файл..."));
+    SetWindowTextW(g.run, Text(L"Run check", L"Запустить проверку"));
+    SetWindowTextW(g.copy, Text(L"Copy report", L"Скопировать отчёт"));
+    SetWindowTextW(g.close, Text(L"Close", L"Закрыть"));
+
+    SetComboText(g.memoryCombo, 0, Text(L"Off", L"Выключен"), 0);
+
+    HWND header = g.list ? ListView_GetHeader(g.list) : nullptr;
+    if (header) {
+        HDITEMW item = {};
+        item.mask = HDI_TEXT;
+        item.pszText = const_cast<wchar_t*>(Text(L"Check", L"Проверка"));
+        Header_SetItem(header, 1, &item);
+        item.pszText = const_cast<wchar_t*>(Text(L"Result", L"Что вышло"));
+        Header_SetItem(header, 2, &item);
     }
 }
 
@@ -393,6 +538,7 @@ void ApplyTheme()
 
     const wchar_t* theme = g.dark ? L"DarkMode_Explorer" : L"Explorer";
     HWND themed[] = { g.navSettings, g.navCache, g.navDiagnose,
+                      g.languageCombo,
                       g.enabled, g.radio[0], g.radio[1], g.radio[2],
                       g.memoryCombo, g.previewToggle, g.previewLimitCombo,
                       g.clearPreview, g.save, g.close, g.pick, g.run, g.copy,
@@ -435,16 +581,17 @@ void Layout()
     // Навигация
     Place(g.brand,       kMargin, 22, kNavWidth - kMargin * 2, 26);
     Place(g.version,     kMargin, 48, kNavWidth - kMargin * 2, 18);
-    Place(g.navSettings, 8, 92,  kNavWidth - 16, 36);
-    Place(g.navCache,    8, 132, kNavWidth - 16, 36);
-    Place(g.navDiagnose, 8, 172, kNavWidth - 16, 36);
+    Place(g.languageCombo, 8, kWindowH - kMargin - 28, kNavWidth - 16, 150);
+    Place(g.navSettings, 8, 126, kNavWidth - 16, 36);
+    Place(g.navCache,    8, 166, kNavWidth - 16, 36);
+    Place(g.navDiagnose, 8, 206, kNavWidth - 16, 36);
 
     // Страница настроек
     int y = 26;
     Place(g.setHead, contentX, y, contentW, 26); y += 40;
     Place(g.enabled, contentX, y, contentW, 22); y += 24;
     Place(g.enabledNote, contentX + 24, y, contentW - 24, 34); y += 46;
-    const int noteH[3] = { 18, 34, 18 };
+    const int noteH[3] = { 18, 18, 34 };
     for (int i = 0; i < 3; ++i) {
         Place(g.radio[i], contentX, y, contentW, 22); y += 24;
         Place(g.note[i], contentX + 24, y, contentW - 24, noteH[i]);
@@ -580,7 +727,7 @@ void Diagnose()
     g.haveReport = false;
     EnableWindow(g.run, FALSE);
     EnableWindow(g.copy, FALSE);
-    SetWindowTextW(g.status, L"Проверяем...");
+    SetWindowTextW(g.status, Text(L"Checking...", L"Проверяем..."));
 
     const std::wstring file = g.userFile;
     HWND target = g.wnd;
@@ -615,7 +762,9 @@ void CopyReport()
         EmptyClipboard();
         SetClipboardData(CF_UNICODETEXT, mem);
         CloseClipboard();
-        SetWindowTextW(g.status, L"Отчёт скопирован — вставьте его в issue на GitHub.");
+        SetWindowTextW(g.status,
+                       Text(L"Report copied — paste it into a GitHub issue.",
+                            L"Отчёт скопирован — вставьте его в issue на GitHub."));
     } else {
         GlobalFree(mem);
     }
@@ -626,11 +775,13 @@ void PickFile()
     wchar_t path[MAX_PATH] = {};
     OPENFILENAMEW ofn = { sizeof(ofn) };
     ofn.hwndOwner   = g.wnd;
-    ofn.lpstrFilter = L"Видео и звук\0*.mp4;*.mkv;*.webm;*.mov;*.m4v;*.mka\0"
-                      L"Все файлы\0*.*\0\0";
+    ofn.lpstrFilter = Text(L"Video and audio\0*.mp4;*.mkv;*.webm;*.mov;*.m4v;*.mka\0"
+                            L"All files\0*.*\0\0",
+                            L"Видео и звук\0*.mp4;*.mkv;*.webm;*.mov;*.m4v;*.mka\0"
+                            L"Все файлы\0*.*\0\0");
     ofn.lpstrFile   = path;
     ofn.nMaxFile    = MAX_PATH;
-    ofn.lpstrTitle  = L"Файл, который не открывается";
+    ofn.lpstrTitle  = Text(L"File that does not open", L"Файл, который не открывается");
     ofn.Flags       = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
 
     if (GetOpenFileNameW(&ofn)) {
@@ -643,7 +794,7 @@ void UpdateCacheUsage()
 {
     const av1imp::PreviewCacheUsage usage = av1imp::PreviewCache::Instance().Usage();
     wchar_t text[160] = {};
-    swprintf_s(text, L"Занято: %.1f MiB, файлов: %llu",
+    swprintf_s(text, Text(L"Used: %.1f MiB, files: %llu", L"Занято: %.1f MiB, файлов: %llu"),
                usage.bytes / (1024.0 * 1024.0),
                (unsigned long long)usage.files);
     SetWindowTextW(g.cacheUsage, text);
@@ -669,10 +820,14 @@ void SaveSettings()
     settings.previewCacheMB = ComboValue(g.previewLimitCombo, 2048);
 
     if (av1imp::SaveSettings(settings)) {
-        MessageBoxW(g.wnd, L"Сохранено.\n\nПерезапустите Premiere Pro, чтобы настройка применилась.",
-                    L"Готово", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(g.wnd,
+                    Text(L"Saved.\n\nRestart Premiere Pro for the changes to take effect.",
+                         L"Сохранено.\n\nПерезапустите Premiere Pro, чтобы настройка применилась."),
+                    Text(L"Saved", L"Готово"), MB_OK | MB_ICONINFORMATION);
     } else {
-        MessageBoxW(g.wnd, L"Не удалось записать файл настроек.", L"Ошибка",
+        MessageBoxW(g.wnd, Text(L"Could not write the settings file.",
+                                L"Не удалось записать файл настроек."),
+                    Text(L"Error", L"Ошибка"),
                     MB_OK | MB_ICONERROR);
     }
 }
@@ -682,9 +837,11 @@ void ClearPreviewCache()
     av1imp::PreviewCache::Instance().Clear();
     UpdateCacheUsage();
     MessageBoxW(g.wnd,
-                L"Кэш уменьшенных превью очищен.\n\n"
-                L"Работающее приложение Adobe может сразу создать новые файлы.",
-                L"Кэш очищен", MB_OK | MB_ICONINFORMATION);
+                Text(L"Reduced preview cache cleared.\n\n"
+                     L"A running Adobe application can create new files immediately.",
+                     L"Кэш уменьшенных превью очищен.\n\n"
+                     L"Работающее приложение Adobe может сразу создать новые файлы."),
+                Text(L"Cache cleared", L"Кэш очищен"), MB_OK | MB_ICONINFORMATION);
 }
 
 // ---------------------------------------------------------------- рисование
@@ -995,10 +1152,19 @@ void Build(HWND w)
 {
     g.wnd = w;
     g.dpi = DpiOf(w);
+    g.language = LoadLanguage();
     MakeFonts();
 
     g.brand   = Add(L"STATIC", L"Aether", WS_VISIBLE, 0);
-    g.version = Add(L"STATIC", L"версия " AETHER_VERSION_WSTR, WS_VISIBLE, 0);
+    g.version = Add(L"STATIC", L"", WS_VISIBLE, 0);
+    g.languageCombo = Add(L"COMBOBOX", L"", WS_VISIBLE | CBS_DROPDOWNLIST | WS_TABSTOP,
+                          ID_LANGUAGE);
+    const LRESULT english = SendMessageW(g.languageCombo, CB_ADDSTRING, 0, (LPARAM)L"English");
+    SendMessageW(g.languageCombo, CB_SETITEMDATA, english, (LPARAM)UiLanguage::English);
+    const LRESULT russian = SendMessageW(g.languageCombo, CB_ADDSTRING, 0, (LPARAM)L"Русский");
+    SendMessageW(g.languageCombo, CB_SETITEMDATA, russian, (LPARAM)UiLanguage::Russian);
+    SendMessageW(g.languageCombo, CB_SETCURSEL,
+                 g.language == UiLanguage::Russian ? russian : english, 0);
 
     g.navSettings = Add(L"BUTTON", L"Настройки",
                         WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, ID_NAV_SETTINGS);
@@ -1077,6 +1243,7 @@ void Build(HWND w)
     }
 
     ApplyFonts();
+    UpdateUiText();
     Layout();
 
     const av1imp::Settings settings = av1imp::CurrentSettings();
@@ -1091,7 +1258,7 @@ void Build(HWND w)
     const uint32_t memoryValues[] = { 0, 128, 256, 512, 1024, 2048, 4096 };
     for (uint32_t value : memoryValues) {
         wchar_t label[64] = {};
-        if (value == 0) wcscpy_s(label, L"Выключен");
+        if (value == 0) wcscpy_s(label, Text(L"Off", L"Выключен"));
         else swprintf_s(label, L"%u MiB", value);
         const LRESULT at = SendMessageW(g.memoryCombo, CB_ADDSTRING, 0, (LPARAM)label);
         SendMessageW(g.memoryCombo, CB_SETITEMDATA, at, value);
@@ -1217,7 +1384,8 @@ LRESULT CALLBACK Proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
 
         case WM_DIAG_STEP: {
             std::wstring* step = (std::wstring*)lp;
-            SetWindowTextW(g.status, (L"Проверяем: " + *step).c_str());
+            SetWindowTextW(g.status, (std::wstring(Text(L"Checking: ", L"Проверяем: ")) +
+                                      *step).c_str());
             delete step;
             return 0;
         }
@@ -1232,8 +1400,10 @@ LRESULT CALLBACK Proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
             EnableWindow(g.run, TRUE);
             EnableWindow(g.copy, TRUE);
             SetWindowTextW(g.status, g.report.AnyFailed()
-                ? L"Есть сбои — отметки красным. Скопируйте отчёт и приложите к issue."
-                : L"Всё в порядке. Это не обещает, что Premiere откроет файл, — он ходит своим путём.");
+                ? Text(L"Some checks failed — see the red marks. Copy the report and attach it to an issue.",
+                       L"Есть сбои — отметки красным. Скопируйте отчёт и приложите к issue.")
+                : Text(L"Everything looks good. Premiere still opens files through its own path.",
+                       L"Всё в порядке. Это не обещает, что Premiere откроет файл, — он ходит своим путём."));
             return 0;
         }
 
@@ -1260,6 +1430,20 @@ LRESULT CALLBACK Proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
 
         case WM_COMMAND:
             switch (LOWORD(wp)) {
+                case ID_LANGUAGE:
+                    if (HIWORD(wp) == CBN_SELCHANGE) {
+                        const LRESULT index = SendMessageW(g.languageCombo, CB_GETCURSEL, 0, 0);
+                        const LRESULT value = SendMessageW(g.languageCombo, CB_GETITEMDATA, index, 0);
+                        if (value != CB_ERR) {
+                            g.language = static_cast<UiLanguage>(value);
+                            SaveLanguage(g.language);
+                            UpdateUiText();
+                            UpdateCacheUsage();
+                            ApplyTheme();
+                        }
+                    }
+                    return 0;
+
                 // Рисуем сами — значит и переключаем сами: BS_OWNERDRAW
                 // состояния «отмечен» не ведёт вовсе.
                 case ID_AUTO:
