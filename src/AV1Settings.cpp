@@ -162,6 +162,11 @@ Settings ParseFileSettings(const std::string& text)
     if (GetIniValue(text, "preview_cache_mb", &value)) {
         s.previewCacheMB = ClampPreviewCacheMB(ParseU32(value, kPreviewDefaultMB));
     }
+    value.clear();
+    // Значение не разбираем и не проверяем: ядру оно ни о чём не говорит,
+    // а разберёт его тот, кто показывает надписи. Неизвестное слово там
+    // означает «как в системе», поэтому испортить настройку опечаткой нельзя.
+    if (GetIniValue(text, "lang", &value)) s.language = value;
     return s;
 }
 
@@ -327,6 +332,7 @@ bool SaveSettings(const Settings& settings)
         SnapMemoryCacheMB(settings.memoryCacheMB),
         settings.previewCache,
         ClampPreviewCacheMB(settings.previewCacheMB),
+        settings.language.empty() ? std::string("auto") : settings.language,
     };
 
     std::string existing;
@@ -368,6 +374,8 @@ bool SaveSettings(const Settings& settings)
     updated = SetIniValue(updated, "cache_memory_mb", std::to_string(clamped.memoryCacheMB));
     updated = SetIniValue(updated, "preview_cache", clamped.previewCache ? "on" : "off");
     updated = SetIniValue(updated, "preview_cache_mb", std::to_string(clamped.previewCacheMB));
+    updated = SetIniValue(updated, "lang",
+                          clamped.language.empty() ? "auto" : clamped.language);
     return WriteSettingsFile(updated);
 }
 
@@ -400,6 +408,8 @@ std::string SettingsJson()
     json += s.enabled ? "true" : "false";
     json += ",\"decode\":\"";
     json += DecodeName(s.decode);
+    json += "\",\"lang\":\"";
+    json += s.language.empty() ? "auto" : s.language;
     json += "\",\"cache_memory_mb\":";
     json += std::to_string(s.memoryCacheMB);
     json += ",\"preview_cache\":";

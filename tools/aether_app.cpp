@@ -18,6 +18,7 @@
 // в координатах быть не должно ни одного — иначе на экране со 150% разъедется.
 
 #include "app_diagnose.h"
+#include "localization.h"
 
 #include "../src/AV1Settings.h"
 #include "../src/PreviewCache.h"
@@ -29,6 +30,8 @@
 #include <dwmapi.h>
 #include <uxtheme.h>
 
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -580,7 +583,7 @@ void Diagnose()
     g.haveReport = false;
     EnableWindow(g.run, FALSE);
     EnableWindow(g.copy, FALSE);
-    SetWindowTextW(g.status, L"Проверяем...");
+    SetWindowTextW(g.status, aether::Tr(L"Checking...", L"Проверяем..."));
 
     const std::wstring file = g.userFile;
     HWND target = g.wnd;
@@ -615,7 +618,9 @@ void CopyReport()
         EmptyClipboard();
         SetClipboardData(CF_UNICODETEXT, mem);
         CloseClipboard();
-        SetWindowTextW(g.status, L"Отчёт скопирован — вставьте его в issue на GitHub.");
+        SetWindowTextW(g.status, aether::Tr(
+            L"Report copied - paste it into a GitHub issue.",
+            L"Отчёт скопирован — вставьте его в issue на GitHub."));
     } else {
         GlobalFree(mem);
     }
@@ -626,11 +631,13 @@ void PickFile()
     wchar_t path[MAX_PATH] = {};
     OPENFILENAMEW ofn = { sizeof(ofn) };
     ofn.hwndOwner   = g.wnd;
-    ofn.lpstrFilter = L"Видео и звук\0*.mp4;*.mkv;*.webm;*.mov;*.m4v;*.mka\0"
-                      L"Все файлы\0*.*\0\0";
+    ofn.lpstrFilter = aether::Tr(
+        L"Video and audio\0*.mp4;*.mkv;*.webm;*.mov;*.m4v;*.mka\0All files\0*.*\0\0",
+        L"Видео и звук\0*.mp4;*.mkv;*.webm;*.mov;*.m4v;*.mka\0Все файлы\0*.*\0\0");
     ofn.lpstrFile   = path;
     ofn.nMaxFile    = MAX_PATH;
-    ofn.lpstrTitle  = L"Файл, который не открывается";
+    ofn.lpstrTitle  = aether::Tr(L"The file that will not open",
+                                 L"Файл, который не открывается");
     ofn.Flags       = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
 
     if (GetOpenFileNameW(&ofn)) {
@@ -642,11 +649,14 @@ void PickFile()
 void UpdateCacheUsage()
 {
     const av1imp::PreviewCacheUsage usage = av1imp::PreviewCache::Instance().Usage();
-    wchar_t text[160] = {};
-    swprintf_s(text, L"Занято: %.1f MiB, файлов: %llu",
-               usage.bytes / (1024.0 * 1024.0),
-               (unsigned long long)usage.files);
-    SetWindowTextW(g.cacheUsage, text);
+    // Поток, а не swprintf: строка формата не переводится (tools/localization.h)
+    std::wostringstream text;
+    text << aether::Tr(L"Used: ", L"Занято: ")
+         << std::fixed << std::setprecision(1)
+         << (usage.bytes / (1024.0 * 1024.0))
+         << aether::Tr(L" MiB, files: ", L" MiB, файлов: ")
+         << (unsigned long long)usage.files;
+    SetWindowTextW(g.cacheUsage, text.str().c_str());
 }
 
 uint32_t ComboValue(HWND combo, uint32_t fallback)
@@ -669,10 +679,15 @@ void SaveSettings()
     settings.previewCacheMB = ComboValue(g.previewLimitCombo, 2048);
 
     if (av1imp::SaveSettings(settings)) {
-        MessageBoxW(g.wnd, L"Сохранено.\n\nПерезапустите Premiere Pro, чтобы настройка применилась.",
-                    L"Готово", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(g.wnd,
+            aether::Tr(L"Saved.\n\nRestart Premiere Pro for the setting to take effect.",
+               L"Сохранено.\n\nПерезапустите Premiere Pro, чтобы настройка применилась."),
+            aether::Tr(L"Done", L"Готово"), MB_OK | MB_ICONINFORMATION);
     } else {
-        MessageBoxW(g.wnd, L"Не удалось записать файл настроек.", L"Ошибка",
+        MessageBoxW(g.wnd,
+            aether::Tr(L"Could not write the settings file.",
+               L"Не удалось записать файл настроек."),
+            aether::Tr(L"Error", L"Ошибка"),
                     MB_OK | MB_ICONERROR);
     }
 }
@@ -682,9 +697,11 @@ void ClearPreviewCache()
     av1imp::PreviewCache::Instance().Clear();
     UpdateCacheUsage();
     MessageBoxW(g.wnd,
-                L"Кэш уменьшенных превью очищен.\n\n"
-                L"Работающее приложение Adobe может сразу создать новые файлы.",
-                L"Кэш очищен", MB_OK | MB_ICONINFORMATION);
+                aether::Tr(L"The reduced preview cache has been cleared.\n\n"
+                   L"A running Adobe application may create new files right away.",
+                   L"Кэш уменьшенных превью очищен.\n\n"
+                   L"Работающее приложение Adobe может сразу создать новые файлы."),
+                aether::Tr(L"Cache cleared", L"Кэш очищен"), MB_OK | MB_ICONINFORMATION);
 }
 
 // ---------------------------------------------------------------- рисование
@@ -998,69 +1015,101 @@ void Build(HWND w)
     MakeFonts();
 
     g.brand   = Add(L"STATIC", L"Aether", WS_VISIBLE, 0);
-    g.version = Add(L"STATIC", L"версия " AETHER_VERSION_WSTR, WS_VISIBLE, 0);
+    const std::wstring versionLabel =
+        std::wstring(aether::Tr(L"version ", L"версия ")) + AETHER_VERSION_WSTR;
+    g.version = Add(L"STATIC", versionLabel.c_str(), WS_VISIBLE, 0);
 
-    g.navSettings = Add(L"BUTTON", L"Настройки",
+    g.navSettings = Add(L"BUTTON", aether::Tr(L"Settings", L"Настройки"),
                         WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, ID_NAV_SETTINGS);
-    g.navCache = Add(L"BUTTON", L"Кэш",
+    g.navCache = Add(L"BUTTON", aether::Tr(L"Cache", L"Кэш"),
                      WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, ID_NAV_CACHE);
-    g.navDiagnose = Add(L"BUTTON", L"Диагностика",
+    g.navDiagnose = Add(L"BUTTON", aether::Tr(L"Diagnostics", L"Диагностика"),
                         WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW, ID_NAV_DIAGNOSE);
 
     // ---- настройки ----
-    g.setHead  = Add(L"STATIC", L"Как распаковывать видео AV1 и VP9", 0, 0);
-    g.enabled = Add(L"BUTTON", L"Aether включён",
+    g.setHead  = Add(L"STATIC", aether::Tr(L"How to decode AV1 and VP9 video",
+                                       L"Как распаковывать видео AV1 и VP9"), 0, 0);
+    g.enabled = Add(L"BUTTON", aether::Tr(L"Aether is on", L"Aether включён"),
                     BS_OWNERDRAW | WS_GROUP | WS_TABSTOP, ID_ENABLED);
     g.enabledNote = Add(L"STATIC",
-                        L"Если выключить, после перезапуска Adobe файлы будут переданы\n"
-                        L"другим импортёрам, а FFmpeg не загрузится.", 0, 0);
-    g.radio[0] = Add(L"BUTTON", L"Автоматически (рекомендуется)",
+                        aether::Tr(L"Turn it off and, after Adobe restarts, files go to other\n"
+                           L"importers and FFmpeg is not loaded at all.",
+                           L"Если выключить, после перезапуска Adobe файлы будут переданы\n"
+                           L"другим импортёрам, а FFmpeg не загрузится."), 0, 0);
+    g.radio[0] = Add(L"BUTTON", aether::Tr(L"Automatic (recommended)",
+                                        L"Автоматически (рекомендуется)"),
                      BS_OWNERDRAW | WS_GROUP | WS_TABSTOP, ID_AUTO);
-    g.note[0]  = Add(L"STATIC", L"Процессором на машинах от 8 потоков, иначе видеокартой.", 0, 0);
-    g.radio[1] = Add(L"BUTTON", L"Процессором (dav1d)", BS_OWNERDRAW | WS_TABSTOP, ID_SOFTWARE);
+    g.note[0]  = Add(L"STATIC", aether::Tr(
+        L"Processor on machines with 8 threads or more, graphics card otherwise.",
+        L"Процессором на машинах от 8 потоков, иначе видеокартой."), 0, 0);
+    g.radio[1] = Add(L"BUTTON", aether::Tr(L"Processor (dav1d)", L"Процессором (dav1d)"),
+                     BS_OWNERDRAW | WS_TABSTOP, ID_SOFTWARE);
     g.note[1]  = Add(L"STATIC",
-                     L"По замерам быстрее: видеокарте приходится копировать каждый кадр\n"
-                     L"в обычную память, а процессор сразу пишет туда.", 0, 0);
-    g.radio[2] = Add(L"BUTTON", L"Видеокартой (NVIDIA / Intel / AMD)", BS_OWNERDRAW | WS_TABSTOP, ID_HARDWARE);
-    g.note[2]  = Add(L"STATIC", L"Разгружает процессор. Выбирайте, если он слабый или занят другим.", 0, 0);
-    g.setHint  = Add(L"STATIC", L"Изменения вступят в силу после перезапуска Premiere Pro.",
+                     aether::Tr(L"Faster by measurement: the graphics card has to copy every\n"
+                        L"frame into ordinary memory, the processor writes there at once.",
+                        L"По замерам быстрее: видеокарте приходится копировать каждый кадр\n"
+                        L"в обычную память, а процессор сразу пишет туда."), 0, 0);
+    g.radio[2] = Add(L"BUTTON", aether::Tr(L"Graphics card (NVIDIA / Intel / AMD)",
+                                        L"Видеокартой (NVIDIA / Intel / AMD)"),
+                     BS_OWNERDRAW | WS_TABSTOP, ID_HARDWARE);
+    g.note[2]  = Add(L"STATIC", aether::Tr(
+        L"Takes load off the processor. Pick it if yours is weak or busy.",
+        L"Разгружает процессор. Выбирайте, если он слабый или занят другим."), 0, 0);
+    g.setHint  = Add(L"STATIC", aether::Tr(
+        L"Changes take effect after Premiere Pro restarts.",
+        L"Изменения вступят в силу после перезапуска Premiere Pro."),
                      SS_LEFTNOWORDWRAP, 0);
-    g.save     = Add(L"BUTTON", L"Сохранить", BS_OWNERDRAW | WS_TABSTOP, ID_SAVE);
+    g.save     = Add(L"BUTTON", aether::Tr(L"Save", L"Сохранить"),
+                     BS_OWNERDRAW | WS_TABSTOP, ID_SAVE);
 
     // ---- кэш ----
-    g.cacheHead = Add(L"STATIC", L"Кэш Aether", 0, 0);
-    g.memoryLabel = Add(L"STATIC", L"Кэш кадров в памяти", SS_LEFTNOWORDWRAP, 0);
+    g.cacheHead = Add(L"STATIC", aether::Tr(L"Aether cache", L"Кэш Aether"), 0, 0);
+    g.memoryLabel = Add(L"STATIC", aether::Tr(L"Frame cache in memory",
+                                           L"Кэш кадров в памяти"), SS_LEFTNOWORDWRAP, 0);
     g.memoryCombo = Add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL,
                         ID_MEMORY_CACHE);
     g.memoryNote = Add(L"STATIC",
-                       L"Лимит относится только к кадрам, которые кэширует Aether.\n"
-                       L"Общая память Premiere может быть выше.", 0, 0);
-    g.previewToggle = Add(L"BUTTON", L"Хранить уменьшенные превью на диске",
+                       aether::Tr(L"The limit covers only the frames Aether caches.\n"
+                          L"Premiere's own memory use can be higher.",
+                          L"Лимит относится только к кадрам, которые кэширует Aether.\n"
+                          L"Общая память Premiere может быть выше."), 0, 0);
+    g.previewToggle = Add(L"BUTTON", aether::Tr(L"Keep reduced previews on disk",
+                                             L"Хранить уменьшенные превью на диске"),
                           BS_OWNERDRAW | WS_GROUP | WS_TABSTOP, ID_PREVIEW_CACHE);
     g.previewNote = Add(L"STATIC",
-                        L"Только BGRA8 Draft/Low до 2 MiB. Полноразмерное\n"
-                        L"воспроизведение и экспорт этот кэш не используют.", 0, 0);
-    g.previewLimitLabel = Add(L"STATIC", L"Лимит дискового кэша", SS_LEFTNOWORDWRAP, 0);
+                        aether::Tr(L"BGRA8 Draft/Low up to 2 MiB only. Full-size playback\n"
+                           L"and export do not use this cache.",
+                           L"Только BGRA8 Draft/Low до 2 MiB. Полноразмерное\n"
+                           L"воспроизведение и экспорт этот кэш не используют."), 0, 0);
+    g.previewLimitLabel = Add(L"STATIC", aether::Tr(L"Disk cache limit",
+                                                 L"Лимит дискового кэша"), SS_LEFTNOWORDWRAP, 0);
     g.previewLimitCombo = Add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL,
                               ID_PREVIEW_LIMIT);
     g.cacheUsage = Add(L"STATIC", L"", SS_LEFTNOWORDWRAP, 0);
-    g.clearPreview = Add(L"BUTTON", L"Очистить кэш превью",
+    g.clearPreview = Add(L"BUTTON", aether::Tr(L"Clear preview cache",
+                                            L"Очистить кэш превью"),
                          BS_OWNERDRAW | WS_TABSTOP, ID_CLEAR_PREVIEW);
 
     // ---- диагностика ----
-    g.diagHead = Add(L"STATIC", L"Диагностика", 0, 0);
+    g.diagHead = Add(L"STATIC", aether::Tr(L"Diagnostics", L"Диагностика"), 0, 0);
     g.diagNote = Add(L"STATIC",
-                     L"Проверяет систему, приложения Adobe и распаковку видео. Если какой-то\n"
-                     L"файл не открывается — укажите его, и он будет проверен отдельно.", 0, 0);
+                     aether::Tr(L"Checks the system, the Adobe applications and video decoding.\n"
+                        L"If some file will not open, point at it and it gets its own check.",
+                        L"Проверяет систему, приложения Adobe и распаковку видео. Если какой-то\n"
+                        L"файл не открывается — укажите его, и он будет проверен отдельно."), 0, 0);
     g.fileBox  = Add(L"EDIT", L"", ES_AUTOHSCROLL | ES_READONLY, 0);
-    g.pick     = Add(L"BUTTON", L"Выбрать файл...", BS_OWNERDRAW | WS_TABSTOP, ID_PICK);
+    g.pick     = Add(L"BUTTON", aether::Tr(L"Choose a file...", L"Выбрать файл..."),
+                     BS_OWNERDRAW | WS_TABSTOP, ID_PICK);
     g.list     = Add(WC_LISTVIEWW, L"", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
                      ID_LIST);
     g.status   = Add(L"STATIC", L"", SS_LEFTNOWORDWRAP, 0);
-    g.run      = Add(L"BUTTON", L"Запустить проверку", BS_OWNERDRAW | WS_TABSTOP, ID_RUN);
-    g.copy     = Add(L"BUTTON", L"Скопировать отчёт", BS_OWNERDRAW | WS_TABSTOP, ID_COPY);
+    g.run      = Add(L"BUTTON", aether::Tr(L"Run the check", L"Запустить проверку"),
+                     BS_OWNERDRAW | WS_TABSTOP, ID_RUN);
+    g.copy     = Add(L"BUTTON", aether::Tr(L"Copy the report", L"Скопировать отчёт"),
+                     BS_OWNERDRAW | WS_TABSTOP, ID_COPY);
 
-    g.close = Add(L"BUTTON", L"Закрыть", WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, ID_CLOSE);
+    g.close = Add(L"BUTTON", aether::Tr(L"Close", L"Закрыть"),
+                  WS_VISIBLE | BS_OWNERDRAW | WS_TABSTOP, ID_CLOSE);
 
     ListView_SetExtendedListViewStyle(g.list,
         LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_LABELTIP);
@@ -1069,7 +1118,9 @@ void Build(HWND w)
     LVCOLUMNW col = {};
     col.mask = LVCF_TEXT | LVCF_WIDTH;
     struct C { const wchar_t* title; int width; };
-    const C cols[] = { { L"", 28 }, { L"Проверка", 210 }, { L"Что вышло", 300 } };
+    const C cols[] = { { L"", 28 },
+                       { aether::Tr(L"Check", L"Проверка"), 210 },
+                       { aether::Tr(L"Result", L"Что вышло"), 300 } };
     for (int i = 0; i < 3; ++i) {
         col.pszText = const_cast<wchar_t*>(cols[i].title);
         col.cx      = Dp(cols[i].width);
@@ -1091,7 +1142,7 @@ void Build(HWND w)
     const uint32_t memoryValues[] = { 0, 128, 256, 512, 1024, 2048, 4096 };
     for (uint32_t value : memoryValues) {
         wchar_t label[64] = {};
-        if (value == 0) wcscpy_s(label, L"Выключен");
+        if (value == 0) wcscpy_s(label, aether::Tr(L"Off", L"Выключен"));
         else swprintf_s(label, L"%u MiB", value);
         const LRESULT at = SendMessageW(g.memoryCombo, CB_ADDSTRING, 0, (LPARAM)label);
         SendMessageW(g.memoryCombo, CB_SETITEMDATA, at, value);
@@ -1217,7 +1268,8 @@ LRESULT CALLBACK Proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
 
         case WM_DIAG_STEP: {
             std::wstring* step = (std::wstring*)lp;
-            SetWindowTextW(g.status, (L"Проверяем: " + *step).c_str());
+            SetWindowTextW(g.status,
+                (std::wstring(aether::Tr(L"Checking: ", L"Проверяем: ")) + *step).c_str());
             delete step;
             return 0;
         }
@@ -1232,8 +1284,10 @@ LRESULT CALLBACK Proc(HWND w, UINT msg, WPARAM wp, LPARAM lp)
             EnableWindow(g.run, TRUE);
             EnableWindow(g.copy, TRUE);
             SetWindowTextW(g.status, g.report.AnyFailed()
-                ? L"Есть сбои — отметки красным. Скопируйте отчёт и приложите к issue."
-                : L"Всё в порядке. Это не обещает, что Premiere откроет файл, — он ходит своим путём.");
+                ? aether::Tr(L"There are failures - marked red. Copy the report into an issue.",
+                     L"Есть сбои — отметки красным. Скопируйте отчёт и приложите к issue.")
+                : aether::Tr(L"All good. That does not promise Premiere will open the file - it goes its own way.",
+                     L"Всё в порядке. Это не обещает, что Premiere откроет файл, — он ходит своим путём."));
             return 0;
         }
 
@@ -1315,6 +1369,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR cmdLine, int show)
     // случается внутри CreateWindowExW. Разбор после него опоздал бы.
     if (cmdLine && wcsstr(cmdLine, L"--light")) g_forceTheme = 0;
     if (cmdLine && wcsstr(cmdLine, L"--dark"))  g_forceTheme = 1;
+
+    // Язык — до создания окна по той же причине, что и тема: надписи ставятся
+    // в WM_CREATE. Берём из настроек; там же его меняет панель, так что окно
+    // и панель говорят на одном языке, не сговариваясь.
+    aether::SetLanguage(
+        aether::ParseLanguage(av1imp::CurrentSettings().language.c_str()));
 
     INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES };
     InitCommonControlsEx(&icc);

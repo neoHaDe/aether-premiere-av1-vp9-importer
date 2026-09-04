@@ -204,3 +204,24 @@ button.primary {
     font-weight: 600;
 }
 button.primary:disabled { opacity: .5; }
+
+/* Переключатель языка в шапке.
+   Узкий и неброский: это не настройка, за которой ходят, а способ починить
+   язык, если он угадался неверно. Значения короткие (A / EN / RU), поэтому
+   он не растягивает шапку на узкой панели. */
+.lang {
+    margin-left: auto;
+    padding: 2px 4px;
+    font: inherit;
+    font-size: 11px;
+    color: var(--fg-dim, #9aa0a6);
+    background: transparent;
+    border: 1px solid var(--line, #3c4043);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.lang:focus-visible {
+    outline: 2px solid var(--accent, #2d8cf0);
+    outline-offset: 1px;
+}

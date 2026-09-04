@@ -38,7 +38,7 @@ REM is kept consistent with it so a user without the redistributable can run it.
 cl /nologo /utf-8 /std:c++17 /EHsc /O2 /MT /DUNICODE /D_UNICODE ^
    /D__STDC_CONSTANT_MACROS /D__STDC_LIMIT_MACROS ^
    /I"ffmpeg\include" ^
-   tools\aether_app.cpp tools\app_diagnose.cpp ^
+   tools\aether_app.cpp tools\app_diagnose.cpp tools\localization.cpp ^
    src\AV1Settings.cpp src\PreviewCache.cpp src\AV1Log.cpp src\AV1Decoder.cpp build\obj\aether.res ^
    /Fe:build\Release\Aether.exe "/Fo:build\obj\\" ^
    /link /SUBSYSTEM:WINDOWS /LIBPATH:"ffmpeg\lib" ^
@@ -52,7 +52,7 @@ REM for the panel and the window means the two cannot drift apart.
 cl /nologo /utf-8 /std:c++17 /EHsc /O2 /MT ^
    /D__STDC_CONSTANT_MACROS /D__STDC_LIMIT_MACROS ^
    /I"ffmpeg\include" ^
-   tools\diagnose_app.cpp tools\app_diagnose.cpp ^
+   tools\diagnose_app.cpp tools\app_diagnose.cpp tools\localization.cpp ^
    src\AV1Settings.cpp src\PreviewCache.cpp src\AV1Log.cpp src\AV1Decoder.cpp build\obj\diagnose.res ^
    /Fe:build\Release\AetherDiagnose.exe "/Fo:build\obj\\" ^
    /link /LIBPATH:"ffmpeg\lib" ^

@@ -113,7 +113,7 @@ function applyHostTheme() {
 // ---------------------------------------------------------------------------
 
 function diagnoseExe() {
-    if (!PLUGIN_DIR) throw new Error('папка плагина не найдена');
+    if (!PLUGIN_DIR) throw new Error(I18N.t('app.notFound'));
     return path.join(PLUGIN_DIR, 'AetherDiagnose.exe');
 }
 
@@ -128,6 +128,7 @@ async function readSettings() {
 async function writeSettings(settings) {
     return diagnoseJson([
         '--set',
+        'lang=' + (settings.lang || 'auto'),
         'enabled=' + (settings.enabled ? 'on' : 'off'),
         'decode=' + settings.decode,
         'cache_memory_mb=' + settings.cache_memory_mb,
@@ -139,8 +140,8 @@ async function writeSettings(settings) {
 async function refreshCacheUsage() {
     const usage = await diagnoseJson(['--cache-json']);
     document.getElementById('cache-usage').textContent =
-        'Занято: ' + (usage.bytes / 1024 / 1024).toFixed(1) +
-        ' MiB, файлов: ' + usage.files;
+        I18N.t('cache.used') + (usage.bytes / 1024 / 1024).toFixed(1) +
+        ' MiB' + I18N.t('cache.files') + usage.files;
     return usage;
 }
 
@@ -159,16 +160,20 @@ function runDiagnostics() {
 
     if (!PLUGIN_DIR) {
         results.innerHTML = '';
-        status.textContent = 'Не нашлась папка плагина. Похоже, Aether не установлен.';
+        status.textContent = I18N.t('app.notFound');
         return;
     }
 
     run.disabled  = true;
     copy.disabled = true;
-    status.textContent = 'Проверяем...';
+    status.textContent = I18N.t('diag.running');
 
     const exe  = path.join(PLUGIN_DIR, 'AetherDiagnose.exe');
-    const args = userFile ? ['--json', userFile] : ['--json'];
+    // Язык передаём явно: движок иначе прочитал бы его из файла настроек,
+    // а в панели язык мог быть только что переключен и ещё не сохранён.
+    const lang = I18N.current();
+    const args = userFile ? ['--json', '--lang', lang, userFile]
+                          : ['--json', '--lang', lang];
 
     // Буфер побольше умолчания: отчёт с длинными путями в него не влезал бы,
     // а обрезанный JSON разобрать нельзя вовсе.
@@ -184,7 +189,8 @@ function runDiagnostics() {
 
             if (!report) {
                 results.innerHTML = '';
-                status.textContent = 'Проверка не отработала: ' + (err ? err.message : 'пустой ответ');
+                status.textContent = I18N.t('diag.noReport') +
+                    (err ? err.message : I18N.t('diag.empty'));
                 return;
             }
 
@@ -192,8 +198,8 @@ function runDiagnostics() {
             render(report);
             copy.disabled = false;
             status.textContent = report.failed
-                ? 'Есть сбои — отмечены красным. Приложите отчёт к issue.'
-                : 'Всё в порядке. Это не обещает, что Premiere откроет файл, — он ходит своим путём.';
+                ? I18N.t('diag.failed')
+                : I18N.t('diag.ok');
         });
 }
 
@@ -221,10 +227,8 @@ function render(report) {
             const body = document.createElement('div');
             const accessibleState = document.createElement('span');
             accessibleState.className = 'sr-only';
-            accessibleState.textContent = 'Статус: ' + ({
-                pass: 'успех', fail: 'сбой', warn: 'предупреждение',
-                skip: 'пропущено', info: 'информация',
-            }[check.state] || check.state) + '. ';
+            accessibleState.textContent = I18N.t('state.prefix') + (
+                I18N.t('state.' + check.state) || check.state) + '. ';
             body.appendChild(accessibleState);
 
             const what = document.createElement('div');
@@ -249,8 +253,10 @@ function render(report) {
 // Текст для issue собирается здесь, но чистить его уже не нужно: имена
 // пользователя и машины движок убрал ещё до того, как отдал нам JSON.
 function reportText(report) {
-    const mark = { pass: 'OK  ', fail: 'СБОЙ', warn: '!   ', skip: '—   ', info: '    ' };
-    let out = 'Отчёт диагностики Aether\nВерсия: ' + report.version + '\n\n';
+    const mark = { pass: 'OK  ', fail: I18N.t('report.fail'),
+                   warn: '!   ', skip: '-   ', info: '    ' };
+    let out = I18N.t('diag.reportTitle') + '\n' +
+              I18N.t('diag.reportVersion') + report.version + '\n\n';
     for (const section of report.sections) {
         out += section.title + '\n';
         for (const c of section.checks) {
@@ -259,8 +265,7 @@ function reportText(report) {
         }
         out += '\n';
     }
-    out += 'Проверено ядро плагина на этой машине. Это не доказывает, что\n' +
-           'Premiere откроет файл: он ходит к плагину своим путём.\n';
+    out += I18N.t('diag.reportTail');
     return out;
 }
 
@@ -280,7 +285,7 @@ function setFile(file) {
         drop.classList.add('has');
         forget.hidden = false;
     } else {
-        text.textContent = 'Перетащите сюда файл, который не открывается';
+        text.textContent = I18N.t('diag.drop');
         text.title = '';
         drop.classList.remove('has');
         forget.hidden = true;
@@ -306,7 +311,7 @@ async function copyText(text) {
     area.select();
     const copied = document.execCommand('copy');
     document.body.removeChild(area);
-    if (!copied) throw new Error('clipboard API недоступен');
+    if (!copied) throw new Error(I18N.t('err.clipboard'));
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -354,10 +359,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 preview_cache: document.getElementById('preview-cache').checked,
                 preview_cache_mb: Number(document.getElementById('preview-limit').value),
             });
-            saved.textContent = 'Сохранено. Перезапустите Premiere Pro.';
+            saved.textContent = I18N.t('settings.saved');
             cacheStatus.textContent = saved.textContent;
         } catch (e) {
-            saved.textContent = 'Не удалось записать: ' + e.message;
+            saved.textContent = I18N.t('err.write') + e.message;
             cacheStatus.textContent = saved.textContent;
         }
     };
@@ -375,12 +380,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const usage = await diagnoseJson(['--clear-preview-cache']);
             document.getElementById('cache-usage').textContent =
-                'Занято: ' + (usage.bytes / 1024 / 1024).toFixed(1) +
-                ' MiB, файлов: ' + usage.files;
+                I18N.t('cache.used') + (usage.bytes / 1024 / 1024).toFixed(1) +
+                ' MiB' + I18N.t('cache.files') + usage.files;
             status.textContent =
-                'Кэш очищен. Работающий Adobe может сразу создать новые превью.';
+                I18N.t('cache.cleared');
         } catch (e) {
-            status.textContent = 'Не удалось очистить кэш: ' + e.message;
+            status.textContent = I18N.t('err.clear') + e.message;
         }
     });
 
@@ -413,9 +418,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const status = document.getElementById('status');
         try {
             await copyText(reportText(lastReport));
-            status.textContent = 'Отчёт скопирован — вставьте его в issue на GitHub.';
+            status.textContent = I18N.t('diag.copied');
         } catch (e) {
-            status.textContent = 'Не удалось скопировать отчёт: ' + e.message;
+            status.textContent = I18N.t('err.copy') + e.message;
         }
     });
 
@@ -424,17 +429,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     const version = document.getElementById('version');
     const run = document.getElementById('run');
     run.disabled = true;
-    version.textContent = 'ищем плагин...';
+    version.textContent = I18N.t('app.searching');
     PLUGIN_DIR = await pluginFolder();
     run.disabled = false;
 
     if (!PLUGIN_DIR) {
-        version.textContent = 'плагин не найден';
+        version.textContent = I18N.t('app.notFound');
         return;
     }
 
     try {
         const settings = await readSettings();
+
+        // Язык применяем ПЕРВЫМ делом: до этого на экране английский по
+        // умолчанию, и человек с русской настройкой увидел бы вспышку
+        // чужого языка на каждом открытии панели.
+        const langSelect = document.getElementById('lang');
+        langSelect.value = settings.lang || 'auto';
+        I18N.applyLanguage(I18N.resolveLanguage(settings.lang));
+
+        langSelect.addEventListener('change', async () => {
+            I18N.applyLanguage(I18N.resolveLanguage(langSelect.value));
+            try {
+                const current = await readSettings();
+                current.lang = langSelect.value;
+                await writeSettings(current);
+            } catch (e) {
+                document.getElementById('saved').textContent =
+                    I18N.t('err.write') + e.message;
+            }
+        });
+
         document.getElementById('enabled').checked = settings.enabled;
         const radio = document.querySelector(
             `input[name="decode"][value="${settings.decode}"]`);
@@ -448,18 +473,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         await refreshCacheUsage();
     } catch (e) {
         document.getElementById('saved').textContent =
-            'Не удалось прочитать настройки: ' + e.message;
+            I18N.t('settings.saveFailed') + e.message;
     }
 
-    // Путь передаётся отдельным аргументом для -LiteralPath, а не вставляется
-    // в PowerShell-команду: кавычка в имени папки не должна менять скрипт.
+    // Версия — из ресурса самого .prm.
+    //
+    // ⚠ Раньше путь передавался лишним аргументом в расчёте на $args[0], и это
+    // не работало НИКОГДА: $args заполняется только при -File, а с -Command всё
+    // после него склеивается в команду. Скрипт получал пустой путь, Get-Item
+    // падал, и панель всегда писала «версия неизвестна» — ровно это и было
+    // видно на живой панели.
+    //
+    // Путь вставляем в одинарные кавычки, удвоив внутренние: одинарная строка
+    // в PowerShell ничего не раскрывает, а удвоение — её единственный способ
+    // экранирования. Кавычка в имени папки скрипт не изменит.
     try {
-        const script = '(Get-Item -LiteralPath $args[0]).VersionInfo.ProductVersion';
+        const prm = path.join(PLUGIN_DIR, 'Aether.prm').replace(/'/g, "''");
+        const script =
+            "(Get-Item -LiteralPath '" + prm + "').VersionInfo.ProductVersion";
         const out = (await execText(powershellExe(), [
-            '-NoProfile', '-Command', script, path.join(PLUGIN_DIR, 'Aether.prm'),
+            '-NoProfile', '-Command', script,
         ])).trim();
-        version.textContent = out ? 'версия ' + out : 'версия неизвестна';
+        version.textContent = out ? I18N.t('app.version') + out
+                                  : I18N.t('app.versionUnknown');
     } catch (e) {
-        version.textContent = 'версия неизвестна';
+        version.textContent = I18N.t('app.versionUnknown');
     }
 });

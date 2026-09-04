@@ -10,6 +10,7 @@
 //   AetherDiagnose.exe --clear-preview-cache
 
 #include "app_diagnose.h"
+#include "localization.h"
 
 #include "../src/AV1Settings.h"
 #include "../src/PreviewCache.h"
@@ -63,6 +64,18 @@ bool ApplySet(av1imp::Settings* s, const std::string& key, const std::string& va
         *err = "invalid enabled value";
         return false;
     }
+    if (key == "lang") {
+        // Принимаем только то, что понимаем, и отказываем на остальном.
+        // Настройка живёт строкой и разбирается при показе, но записать
+        // в файл опечатку с чужого конца — значит потом гадать, почему
+        // язык «не переключается»: он бы молча падал в auto.
+        if (value == "auto" || value == "ru" || value == "en") {
+            s->language = value;
+            return true;
+        }
+        *err = "invalid lang value";
+        return false;
+    }
     if (key == "decode") {
         if (value == "auto") { s->decode = av1imp::DecodeMode::Auto; return true; }
         if (value == "software") { s->decode = av1imp::DecodeMode::Software; return true; }
@@ -114,8 +127,17 @@ int wmain(int argc, wchar_t** argv)
     av1imp::Settings pending = av1imp::CurrentSettings();
     bool haveSet = false;
 
+    // Язык берём из настроек, а панель может перебить его ключом --lang:
+    // ей нужно показать отчёт на том языке, который выбран в ней самой,
+    // не дожидаясь, пока выбор доедет до файла настроек.
+    aether::SetLanguage(aether::ParseLanguage(
+        Utf8Wide(av1imp::CurrentSettings().language).c_str()));
+
     for (int i = 1; i < argc; ++i) {
-        if (wcscmp(argv[i], L"--json") == 0) json = true;
+        if (wcscmp(argv[i], L"--lang") == 0 && i + 1 < argc) {
+            aether::SetLanguage(aether::ParseLanguage(argv[++i]));
+        }
+        else if (wcscmp(argv[i], L"--json") == 0) json = true;
         else if (wcscmp(argv[i], L"--settings-json") == 0) settingsJson = true;
         else if (wcscmp(argv[i], L"--cache-json") == 0) cacheJson = true;
         else if (wcscmp(argv[i], L"--clear-preview-cache") == 0) clearCache = true;

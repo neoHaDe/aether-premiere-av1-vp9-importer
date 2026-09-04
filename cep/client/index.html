@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy"
@@ -9,68 +9,75 @@
 </head>
 <body>
 
+  <!--
+    Надписи не набраны здесь, а проставляются по data-i18n из i18n.js.
+    В разметке остаётся только то, что языку не подчиняется: числа, единицы
+    и имена собственные.
+  -->
   <header>
     <img src="icon.png" width="28" height="28" alt="">
     <h1>Aether</h1>
-    <span id="version" class="note" aria-live="polite">версия неизвестна</span>
+    <span id="version" class="note" aria-live="polite" data-i18n="app.versionUnknown"></span>
+    <select id="lang" class="lang" data-i18n-label="lang.label">
+      <option value="auto">A</option>
+      <option value="en">EN</option>
+      <option value="ru">RU</option>
+    </select>
   </header>
 
-  <nav role="tablist" aria-label="Разделы Aether">
+  <nav role="tablist" data-i18n-label="nav.label">
     <button id="tab-settings" class="tab active" role="tab"
-      aria-selected="true" aria-controls="page-settings">Настройки</button>
+      aria-selected="true" aria-controls="page-settings" data-i18n="nav.settings"></button>
     <button id="tab-cache" class="tab" role="tab" tabindex="-1"
-      aria-selected="false" aria-controls="page-cache">Кэш</button>
+      aria-selected="false" aria-controls="page-cache" data-i18n="nav.cache"></button>
     <button id="tab-diagnose" class="tab" role="tab" tabindex="-1"
-      aria-selected="false" aria-controls="page-diagnose">Диагностика</button>
+      aria-selected="false" aria-controls="page-diagnose" data-i18n="nav.diagnose"></button>
   </nav>
 
   <!-- ------------------------------------------------------- настройки -->
   <section id="page-settings" role="tabpanel" aria-labelledby="tab-settings">
-    <h2>Как распаковывать видео AV1 и VP9</h2>
+    <h2 data-i18n="settings.head"></h2>
 
     <label class="choice">
       <input id="enabled" type="checkbox" checked>
-      <span class="title">Aether включён</span>
-      <span class="note">Если выключить, после перезапуска Adobe файлы будут
-        переданы другим импортёрам, а FFmpeg не загрузится.</span>
+      <span class="title" data-i18n="settings.enabled"></span>
+      <span class="note" data-i18n="settings.enabledNote"></span>
     </label>
 
     <label class="choice">
       <input type="radio" name="decode" value="auto" checked>
-      <span class="title">Автоматически (рекомендуется)</span>
-      <span class="note">Процессором на машинах от 8 потоков, иначе видеокартой.</span>
+      <span class="title" data-i18n="settings.auto"></span>
+      <span class="note" data-i18n="settings.autoNote"></span>
     </label>
 
     <label class="choice">
       <input type="radio" name="decode" value="software">
-      <span class="title">Процессором (dav1d)</span>
-      <span class="note">По замерам быстрее: видеокарте приходится копировать
-        каждый кадр в обычную память, а процессор сразу пишет туда.</span>
+      <span class="title" data-i18n="settings.software"></span>
+      <span class="note" data-i18n="settings.softwareNote"></span>
     </label>
 
     <label class="choice">
       <input type="radio" name="decode" value="hardware">
-      <span class="title">Видеокартой (NVIDIA / Intel / AMD)</span>
-      <span class="note">Разгружает процессор. Выбирайте, если он слабый
-        или занят другим.</span>
+      <span class="title" data-i18n="settings.hardware"></span>
+      <span class="note" data-i18n="settings.hardwareNote"></span>
     </label>
 
-    <p class="note hint">Изменения вступят в силу после перезапуска Premiere Pro.</p>
+    <p class="note hint" data-i18n="settings.hint"></p>
 
     <div class="bar">
-      <button id="save" class="primary">Сохранить</button>
+      <button id="save" class="primary" data-i18n="settings.save"></button>
       <span id="saved" class="note"></span>
     </div>
   </section>
 
   <!-- ------------------------------------------------------------- кэш -->
   <section id="page-cache" role="tabpanel" aria-labelledby="tab-cache" hidden>
-    <h2>Кэш Aether</h2>
+    <h2 data-i18n="cache.head"></h2>
 
     <label class="field">
-      <span>Кэш кадров в памяти</span>
+      <span data-i18n="cache.memory"></span>
       <select id="memory-cache">
-        <option value="0">Выключен</option>
+        <option value="0" data-i18n="cache.off"></option>
         <option value="128">128 MiB</option>
         <option value="256">256 MiB</option>
         <option value="512" selected>512 MiB</option>
@@ -79,18 +86,16 @@
         <option value="4096">4 GiB</option>
       </select>
     </label>
-    <p class="note">Лимит относится только к кадрам, которые кэширует Aether.
-      Общая память Premiere может быть выше.</p>
+    <p class="note" data-i18n="cache.memoryNote"></p>
 
     <label class="choice">
       <input id="preview-cache" type="checkbox">
-      <span class="title">Хранить уменьшенные превью на диске</span>
-      <span class="note">Только BGRA8 Draft/Low до 2 MiB. Полноразмерное
-        воспроизведение и экспорт этот кэш не используют.</span>
+      <span class="title" data-i18n="cache.preview"></span>
+      <span class="note" data-i18n="cache.previewNote"></span>
     </label>
 
     <label class="field">
-      <span>Лимит дискового кэша</span>
+      <span data-i18n="cache.limit"></span>
       <select id="preview-limit">
         <option value="256">256 MiB</option>
         <option value="512">512 MiB</option>
@@ -102,26 +107,24 @@
       </select>
     </label>
 
-    <p id="cache-usage" class="note" aria-live="polite">Занято: считаем...</p>
+    <p id="cache-usage" class="note" aria-live="polite" data-i18n="cache.usageCounting"></p>
     <p id="cache-status" class="note" role="status" aria-live="polite"></p>
 
     <div class="bar">
-      <button id="save-cache" class="primary">Сохранить</button>
-      <button id="clear-cache">Очистить кэш превью</button>
+      <button id="save-cache" class="primary" data-i18n="cache.save"></button>
+      <button id="clear-cache" data-i18n="cache.clear"></button>
     </div>
   </section>
 
   <!-- ------------------------------------------------------ диагностика -->
   <section id="page-diagnose" role="tabpanel" aria-labelledby="tab-diagnose" hidden>
-    <h2>Диагностика</h2>
-    <p class="note">Проверяет систему, приложения Adobe и распаковку видео.
-      Если какой-то файл не открывается — бросьте его сюда, и он будет
-      проверен отдельно.</p>
+    <h2 data-i18n="diag.head"></h2>
+    <p class="note" data-i18n="diag.note"></p>
 
     <div id="drop" class="drop">
-      <span id="drop-text">Перетащите сюда файл, который не открывается</span>
-      <button id="browse">Выбрать файл</button>
-      <button id="forget" hidden>убрать</button>
+      <span id="drop-text" data-i18n="diag.drop"></span>
+      <button id="browse" data-i18n="diag.browse"></button>
+      <button id="forget" hidden data-i18n="diag.forget"></button>
       <input id="file-picker" type="file" hidden>
     </div>
 
@@ -129,11 +132,12 @@
     <p id="status" class="note" role="status" aria-live="polite"></p>
 
     <div class="bar">
-      <button id="run" class="primary">Запустить проверку</button>
-      <button id="copy" disabled>Скопировать отчёт</button>
+      <button id="run" class="primary" data-i18n="diag.run"></button>
+      <button id="copy" disabled data-i18n="diag.copy"></button>
     </div>
   </section>
 
+  <script src="i18n.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
